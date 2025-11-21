@@ -4,9 +4,8 @@ import json
 from datetime import datetime, timedelta
 import io
 
-# --- CONFIGURATION & STATE MANAGEMENT ---
-# In a real app, this would be a database. Here we use Session State for the prototype.
-
+# --- CONFIGURATION (FALLBACK) ---
+# These load only if no external file is uploaded
 DEFAULT_KNOWLEDGE_BASE = {
     "meta_info": {"version": "1.0", "last_updated": "2025-11-20"},
     "anti_patterns": [
@@ -51,8 +50,8 @@ DEFAULT_KNOWLEDGE_BASE = {
 
 # Mock User Database
 USERS = {
-    "coach": "admin123",  # The Agile Expert (Can edit rules)
-    "sm": "scrum123"      # The Scrum Master (Can run analysis)
+    "coach": "admin123",
+    "sm": "scrum123"
 }
 
 # --- HELPER FUNCTIONS ---
@@ -72,13 +71,12 @@ def check_login(username, password):
     return False
 
 def generate_sample_data():
-    # Creates a fake Jira export CSV
     data = {
         "Issue Key": ["EQS-101", "EQS-102", "EQS-103", "EQS-104", "EQS-105"],
         "Summary": ["Setup Cloud Env", "Login Page", "Fix Typos", "Huge Migration", "Urgent Fix"],
         "Status": ["To Do", "In Progress", "Done", "To Do", "In Progress"],
         "Updated": [
-            (datetime.now() - timedelta(days=100)).strftime("%Y-%m-%d"), # Outdated
+            (datetime.now() - timedelta(days=100)).strftime("%Y-%m-%d"),
             datetime.now().strftime("%Y-%m-%d"),
             datetime.now().strftime("%Y-%m-%d"),
             datetime.now().strftime("%Y-%m-%d"),
@@ -89,17 +87,21 @@ def generate_sample_data():
             (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d"),
             (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d"),
             (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d"),
-            datetime.now().strftime("%Y-%m-%d") # Created today (Sprint Stuffing risk)
+            datetime.now().strftime("%Y-%m-%d")
         ],
-        "Story Points": [5, 8, 1, 20, 3], # 20 is Oversized
-        "Acceptance Criteria": ["Defined", "", "Fixed", "Defined", "Defined"] # Missing AC
+        "Story Points": [5, 8, 1, 20, 3],
+        "Acceptance Criteria": ["Defined", "", "Fixed", "Defined", "Defined"]
     }
     return pd.DataFrame(data)
 
-# --- PAGE: LOGIN ---
+def convert_df_to_csv(df):
+    return df.to_csv(index=False).encode('utf-8')
+
+# --- PAGES ---
+
 def login_page():
     st.title("🔐 EQS Agile Intelligence Platform")
-    st.markdown("### AI Virtual Scrum Master (AVSM)")
+    st.markdown("### AI Virtual Scrum Master (AVSM v2.0)")
     
     with st.form("login_form"):
         username = st.text_input("Username")
@@ -113,57 +115,41 @@ def login_page():
                 st.session_state["role"] = "Admin" if username == "coach" else "User"
                 st.rerun()
             else:
-                st.error("Invalid credentials. Try coach/admin123 or sm/scrum123")
+                st.error("Invalid credentials.")
 
-# --- PAGE: ADMIN (CONFIGURE RULES) ---
 def admin_page():
-    st.header("⚙️ Configure AVSM Logic (No-Code Interface)")
-    st.info("This interface allows Agile Coaches to update anti-pattern rules without writing Python code.")
+    st.header("⚙️ Knowledge Base Management")
+    st.info("Agile Coaches can update logic here without changing code.")
     
     kb = load_knowledge_base()
     
-    # View Current Rules
-    st.subheader("Current Knowledge Base")
-    df_rules = pd.DataFrame(kb["anti_patterns"])
-    st.dataframe(df_rules[["name", "category", "severity", "remedy"]])
-    
-    # Add New Rule
-    st.subheader("➕ Add New Anti-Pattern Rule")
-    with st.form("add_rule"):
-        c1, c2 = st.columns(2)
-        new_name = c1.text_input("Anti-Pattern Name")
-        new_cat = c2.selectbox("Category", ["Product Backlog", "Sprint Planning", "Sprint Execution", "Review"])
-        new_sev = c1.selectbox("Severity", ["Low", "Medium", "High"])
-        new_desc = c2.text_area("Description")
-        
-        st.markdown("**Detection Logic**")
-        l1, l2, l3 = st.columns(3)
-        target_field = l1.text_input("Jira Field to Check", value="Story Points")
-        operator = l2.selectbox("Operator", ["greater_than", "less_than", "is_empty", "older_than_days"])
-        threshold = l3.number_input("Threshold Value", value=0)
-        
-        new_remedy = st.text_area("Recommended Remedy (The advice AVSM will give)")
-        
-        saved = st.form_submit_button("Save Rule to Knowledge Base")
-        
-        if saved:
-            new_entry = {
-                "id": f"CUST-{len(kb['anti_patterns'])+1}",
-                "name": new_name,
-                "category": new_cat,
-                "severity": new_sev,
-                "description": new_desc,
-                "detection_logic": {"field": target_field, "operator": operator, "threshold": threshold},
-                "remedy": new_remedy
-            }
-            kb["anti_patterns"].append(new_entry)
-            save_knowledge_base(kb)
-            st.rerun()
+    # 1. Download Current Logic (JSON)
+    st.subheader("1. Export Current Logic")
+    st.download_button(
+        label="📥 Download Rules (JSON)",
+        data=json.dumps(kb, indent=2),
+        file_name="avsm_rules.json",
+        mime="application/json"
+    )
 
-# --- PAGE: ANALYZE (THE ENGINE) ---
+    # 2. Upload New Logic (JSON)
+    st.subheader("2. Upload New Logic")
+    uploaded_rules = st.file_uploader("Upload updated JSON file", type="json")
+    if uploaded_rules is not None:
+        if st.button("Update System Logic"):
+            try:
+                new_kb = json.load(uploaded_rules)
+                save_knowledge_base(new_kb)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    st.divider()
+    st.subheader("Current Active Rules")
+    st.dataframe(pd.DataFrame(kb["anti_patterns"])[["name", "category", "severity"]])
+
 def analysis_page():
     st.header("🔍 AVSM Analysis Engine")
-    st.markdown("Upload your **Jira/ADO Export (CSV)** to detect Agile Anti-Patterns.")
     
     # Data Loader
     data_source = st.radio("Select Data Source:", ["Use Sample Data (Demo)", "Upload CSV"])
@@ -178,8 +164,7 @@ def analysis_page():
             df = pd.read_csv(uploaded_file)
     
     if df is not None:
-        # Show Raw Data
-        with st.expander("View Raw Backlog Data"):
+        with st.expander("View Raw Data"):
             st.dataframe(df)
             
         if st.button("🚀 Run AVSM Analysis"):
@@ -192,97 +177,95 @@ def run_analysis_engine(df):
     st.divider()
     st.subheader("📋 Analysis Report")
     
-    # --- THE LOGIC ENGINE ---
+    # Logic Engine
     for rule in kb["anti_patterns"]:
         logic = rule["detection_logic"]
         field = logic["field"]
         
-        # Check if field exists in DF (Fuzzy match or exact)
         if field not in df.columns:
-            continue # Skip rules where field is missing
+            continue
             
-        # Apply Logic
         flagged_items = []
         
         if logic["operator"] == "older_than_days":
-            # Date logic
-            df["temp_date"] = pd.to_datetime(df[field])
+            df["temp_date"] = pd.to_datetime(df[field], errors='coerce')
             cutoff = datetime.now() - timedelta(days=logic["threshold"])
             flagged_items = df[df["temp_date"] < cutoff]
             
         elif logic["operator"] == "is_empty":
-            # Empty field logic
             flagged_items = df[df[field].isnull() | (df[field] == "")]
             
         elif logic["operator"] == "greater_than":
-            # Numeric logic
             flagged_items = df[df[field] > logic["threshold"]]
             
         elif logic["operator"] == "created_after_sprint_start":
-            # Scope creep logic - simplified for demo (assumes sprint started 5 days ago)
-            df["temp_created"] = pd.to_datetime(df[field])
+            df["temp_created"] = pd.to_datetime(df[field], errors='coerce')
             sprint_start = datetime.now() - timedelta(days=5)
             flagged_items = df[df["temp_created"] > sprint_start]
 
-        # Record Violations
         if len(flagged_items) > 0:
-            violations.append({
-                "rule": rule["name"],
-                "severity": rule["severity"],
-                "count": len(flagged_items),
-                "items": flagged_items["Issue Key"].tolist(),
-                "remedy": rule["remedy"]
-            })
+            for idx, row in flagged_items.iterrows():
+                violations.append({
+                    "Issue": row.get("Issue Key", "Unknown"),
+                    "Summary": row.get("Summary", "Unknown"),
+                    "Anti-Pattern": rule["name"],
+                    "Severity": rule["severity"],
+                    "Recommendation": rule["remedy"]
+                })
 
-    # --- DISPLAY RESULTS ---
     if not violations:
-        st.success("🎉 Amazing! No anti-patterns detected. Keep up the great work!")
+        st.success("No issues found!")
     else:
-        # 1. Scorecard
-        score = max(0, 100 - (len(violations) * 15))
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Agile Health Score", f"{score}/100", delta=-len(violations), delta_color="inverse")
-        col2.metric("Issues Detected", len(violations))
-        col3.metric("Critical Issues", len([v for v in violations if v["severity"] == "High"]))
+        # Scorecard
+        score = max(0, 100 - (len(violations) * 10))
+        c1, c2 = st.columns(2)
+        c1.metric("Agile Health Score", f"{score}/100")
+        c2.metric("Issues Found", len(violations))
         
-        # 2. Detailed Findings
+        # Visual Report
         for v in violations:
-            color = "red" if v["severity"] == "High" else "orange"
-            with st.container():
-                st.markdown(f"### :{color}[{v['rule']}]")
-                st.markdown(f"**Severity:** {v['severity']} | **Affected Items:** {', '.join(v['items'])}")
-                st.warning(f"💡 **AVSM Suggestion:** {v['remedy']}")
-                st.divider()
+            st.error(f"**{v['Anti-Pattern']}** ({v['Severity']})")
+            st.write(f"📌 {v['Issue']}: {v['Summary']}")
+            st.caption(f"💡 Remedy: {v['Recommendation']}")
+            st.divider()
+            
+        # DOWNLOAD BUTTON (The New Feature)
+        st.subheader("📥 Export Report")
+        df_violations = pd.DataFrame(violations)
+        csv = convert_df_to_csv(df_violations)
+        
+        st.download_button(
+            label="Download Report as CSV",
+            data=csv,
+            file_name="avsm_report.csv",
+            mime="text/csv",
+        )
 
-# --- MAIN APP STRUCTURE ---
+# --- MAIN ---
 def main():
-    st.set_page_config(page_title="AVSM Prototype", layout="wide")
-    
-    if "logged_in" not in st.session_state:
-        st.session_state["logged_in"] = False
+    st.set_page_config(page_title="AVSM v2", layout="wide")
+    if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
 
     if not st.session_state["logged_in"]:
         login_page()
     else:
-        # Sidebar Navigation
-        st.sidebar.title("🤖 AVSM")
-        st.sidebar.write(f"Logged in as: **{st.session_state['username']}**")
+        st.sidebar.title("🤖 AVSM v2.0")
+        
+        # Check if username exists in session_state before accessing it
+        username = st.session_state.get('username', 'Unknown User')
+        st.sidebar.write(f"User: {username}")
         
         menu = ["Analyze Backlog"]
-        if st.session_state["role"] == "Admin":
+        if st.session_state.get("role") == "Admin":
             menu.append("Configure Rules (Admin)")
-            
-        choice = st.sidebar.radio("Navigation", menu)
         
+        choice = st.sidebar.radio("Menu", menu)
         if st.sidebar.button("Logout"):
             st.session_state["logged_in"] = False
             st.rerun()
             
-        # Routing
-        if choice == "Analyze Backlog":
-            analysis_page()
-        elif choice == "Configure Rules (Admin)":
-            admin_page()
+        if choice == "Analyze Backlog": analysis_page()
+        elif choice == "Configure Rules (Admin)": admin_page()
 
 if __name__ == "__main__":
     main()
