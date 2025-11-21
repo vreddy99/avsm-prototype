@@ -5,6 +5,29 @@ from datetime import datetime, timedelta
 import io
 import re
 
+# --- EMBEDDED DEMO DATA (For users without a file) ---
+DEMO_DATA_CSV = """Issue Key,Summary,Description,Status,Sprint,Story Points,Acceptance Criteria,Created,Updated
+PROJ-101,Fix the login button,Fix the login button,To Do,Sprint 10,3,User can click login,2025-11-01,2025-11-10
+PROJ-102,Stabilization Phase,Ensure the build is stable before release,To Do,Sprint 10 Hardening,8,No critical bugs,2025-11-01,2025-11-15
+PROJ-103,Legacy Database Migration,Migrate SQL to NoSQL architecture,Backlog,,13,Data integrity verified,2022-05-20,2023-01-15
+PROJ-104,User Profile Update,Allow users to change their avatar,To Do,Sprint 10,5,,2025-11-05,2025-11-18
+PROJ-105,Rewrite Entire Frontend,Rewrite the entire application in React,To Do,Sprint 10,40,Pixel perfect match,2025-11-01,2025-11-15
+PROJ-106,Urgent Marketing Color Change,Change the banner to red,To Do,Sprint 10,1,Banner is red,2025-11-21,2025-11-21
+PROJ-107,Bug fix,Fixing the null pointer exception,To Do,Sprint 10,2,No crash,2025-11-01,2025-11-15
+PROJ-108,Search Bar Logic,Implement fuzzy search algorithm,In Progress,Sprint 10,5,Returns relevant results,2025-11-01,2025-11-01
+PROJ-109,Valid Feature,As a user I want to logout so that I am secure,Done,Sprint 10,3,Session is cleared,2025-11-01,2025-11-20
+PROJ-110,Sprint 0 Setup,Set up servers and Jira project,To Do,Sprint 0,5,Servers running,2025-11-01,2025-11-10
+PROJ-111,Server,Setup the server environments,To Do,Sprint 10,3,Env is live,2025-11-01,2025-11-01
+PROJ-112,Investigate API Latency,Looking into why the API takes 2000ms,In Progress,Sprint 10,5,Root cause identified,2025-11-01,2025-11-05
+PROJ-113,Refactor Entire Backend,Complete overhaul of microservices architecture,To Do,Sprint 10,21,,2025-11-01,2025-11-01
+PROJ-114,New CEO Request,Add a flying animation to the logo,To Do,Sprint 10,2,Animation works,2025-11-20,2025-11-20
+PROJ-115,Update Wiki,Documentation needs updating for v1.0,Backlog,,1,Wiki updated,2024-01-01,2024-01-01
+PROJ-116,Technical Debt Cleanup,Remove unused libraries and comments,To Do,Sprint 11 Cleanup,5,Libs removed,2025-11-01,2025-11-01
+PROJ-117,Check logs,Check logs,To Do,Sprint 10,1,Logs checked,2025-11-01,2025-11-01
+PROJ-118,Big Data Migration,Move all petabytes to S3 buckets,In Progress,Sprint 10,100,All data moved,2025-11-01,2025-11-01
+PROJ-119,Valid User Story,As admin I want to ban users so I can moderate,To Do,Sprint 10,3,Ban button functions,2025-11-01,2025-11-21
+PROJ-120,Another Valid Story,As user I want to reset password,To Do,Sprint 10,5,Email sent,2025-11-01,2025-11-21"""
+
 # --- CONFIGURATION (Based on 'The Scrum Anti-Patterns Guide') ---
 DEFAULT_KNOWLEDGE_BASE = {
     "meta_info": {"version": "3.0", "source": "The Scrum Anti-Patterns Guide"},
@@ -84,7 +107,7 @@ DEFAULT_KNOWLEDGE_BASE = {
     ]
 }
 
-# --- MOCK USER DATABASE (Updated with Roles) ---
+# --- MOCK USER DATABASE ---
 USERS = {
     "coach": "admin123",       # ADMIN: Can edit rules and run analysis
     "sm": "scrum123",          # USER: Can run analysis only
@@ -218,13 +241,13 @@ def apply_rules(df, rules_json):
 # --- PAGES ---
 
 def login_page():
-    # 1. SIDEBAR LOGO (New Feature - requires Streamlit 1.35+)
+    # 1. SIDEBAR LOGO
     try:
         st.logo("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", link="https://www.scrum.org")
     except AttributeError:
-        pass # Ignores error if using an older Streamlit version
+        pass
 
-    # 2. MAIN PAGE LOGO (Replaces simple text title)
+    # 2. MAIN PAGE LOGO
     col1, col2, col3 = st.columns([1, 2, 1]) 
     with col2:
         st.image("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", width=200)
@@ -233,14 +256,14 @@ def login_page():
     st.markdown("<h1 style='text-align: center;'>Agile Anti-Pattern Scanner v3.0</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: grey;'>Powered by 'The Scrum Anti-Patterns Guide'</p>", unsafe_allow_html=True)
 
-    # --- NEW INSTRUCTIONS SECTION ---
+    # --- INSTRUCTIONS SECTION ---
     with st.container():
         st.markdown("---")
         st.markdown("### 👋 Welcome!")
         st.info("""
         **How to use this tool:**
         1. **Login** with your team credentials (see below).
-        2. **Upload** your backlog CSV file.
+        2. **Upload** your backlog CSV file (or use our Demo Data).
         3. **Review** the automated report for process smells like 'Hardening Sprints' or 'Zombie Tickets'.
         """)
         
@@ -288,7 +311,6 @@ def analysis_page():
     with col1:
         st.subheader("1. Configuration")
         
-        # --- NEW LOGIC: Only Admin can upload rules ---
         if is_admin:
             st.info("Upload Custom Rules (Admin Only)")
             uploaded_rules = st.file_uploader("Upload Custom Rules (JSON)", type="json")
@@ -296,55 +318,81 @@ def analysis_page():
         else:
             st.warning("🔒 Custom Rules Locked (Admin Only)")
             current_rules = DEFAULT_KNOWLEDGE_BASE
-        # ----------------------------------------------
         
         with st.expander("View Active Rules"):
             st.json(current_rules)
 
     with col2:
         st.subheader("2. Backlog Data")
-        st.info("Upload Data (CSV). Required cols: Summary, Description, Status, Created, Updated.")
+        
+        # --- DEMO DATA LOGIC ---
+        # Initialize session state for demo data if not exists
+        if "use_demo_data" not in st.session_state:
+            st.session_state["use_demo_data"] = False
+
         uploaded_data = st.file_uploader("Upload Data (CSV)", type="csv")
+        
+        # Button to toggle demo data
+        if st.button("🚀 Use Demo Data (No file needed)"):
+            st.session_state["use_demo_data"] = True
+            st.rerun() # Rerun to reflect the change immediately
+
+        # Reset demo mode if a real file is uploaded
+        if uploaded_data is not None:
+            st.session_state["use_demo_data"] = False
+
+        if st.session_state["use_demo_data"] and uploaded_data is None:
+            st.success("Using Embedded Demo Dataset")
 
     st.divider()
 
+    # --- LOAD DATAFRAME ---
+    df = None
     if uploaded_data is not None:
         try:
             df = pd.read_csv(uploaded_data)
-            st.write(f"**Data Preview:** {len(df)} items loaded.")
-            st.dataframe(df.head(3))
-            
-            if st.button("噫 Run Analysis"):
-                results = apply_rules(df, current_rules)
-                
-                if results:
-                    st.subheader(f"圷 Found {len(results)} Violations")
-                    
-                    # Convert results to DataFrame
-                    result_df = pd.DataFrame(results)
-                    
-                    # Display Summary Metrics
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("High Severity", len(result_df[result_df['Severity'] == 'High']))
-                    m2.metric("Medium Severity", len(result_df[result_df['Severity'] == 'Medium']))
-                    m3.metric("Categories Affected", result_df['Category'].nunique())
-
-                    # Show on screen
-                    st.dataframe(result_df)
-                    
-                    # Download Logic
-                    csv_data = convert_df_to_csv(result_df)
-                    st.download_button(
-                        label="踏 Download Remediation Report",
-                        data=csv_data,
-                        file_name="agile_remediation_plan.csv",
-                        mime="text/csv"
-                    )
-                else:
-                    st.success("脂 Amazing! No anti-patterns detected in this dataset.")
-                    
         except Exception as e:
-            st.error(f"Error reading CSV: {e}")
+            st.error(f"Error reading uploaded CSV: {e}")
+    elif st.session_state["use_demo_data"]:
+        try:
+            # Load the embedded string as a CSV
+            df = pd.read_csv(io.StringIO(DEMO_DATA_CSV))
+        except Exception as e:
+            st.error(f"Error reading demo data: {e}")
+
+    # --- DISPLAY & ANALYZE ---
+    if df is not None:
+        st.write(f"**Data Preview:** {len(df)} items loaded.")
+        st.dataframe(df.head(3))
+        
+        if st.button("噫 Run Analysis"):
+            results = apply_rules(df, current_rules)
+            
+            if results:
+                st.subheader(f"圷 Found {len(results)} Violations")
+                
+                # Convert results to DataFrame
+                result_df = pd.DataFrame(results)
+                
+                # Display Summary Metrics
+                m1, m2, m3 = st.columns(3)
+                m1.metric("High Severity", len(result_df[result_df['Severity'] == 'High']))
+                m2.metric("Medium Severity", len(result_df[result_df['Severity'] == 'Medium']))
+                m3.metric("Categories Affected", result_df['Category'].nunique())
+
+                # Show on screen
+                st.dataframe(result_df)
+                
+                # Download Logic
+                csv_data = convert_df_to_csv(result_df)
+                st.download_button(
+                    label="踏 Download Remediation Report",
+                    data=csv_data,
+                    file_name="agile_remediation_plan.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.success("脂 Amazing! No anti-patterns detected in this dataset.")
 
 # --- MAIN ---
 def main():
