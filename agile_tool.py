@@ -7,8 +7,8 @@ import re
 
 # --- 1. CENTRALIZED UI CONFIGURATION (Single Source of Truth) ---
 APP_CONSTANTS = {
-    "APP_TITLE": "Agile Anti-Pattern Scanner v3.0",
-    "APP_CAPTION": "Powered by 'The Scrum Anti-Patterns Guide'",
+    "APP_TITLE": "Infosys Agile Anti-Pattern Scanner v3.0",
+    "APP_CAPTION": "Powered by 'EQS Agility Guide'",
     "LOGO_URL": "https://cdn-icons-png.flaticon.com/512/1087/1087815.png",
     "LOGO_LINK": "https://www.scrum.org",
     "BTN_RUN": "🚀 Run Analysis",
