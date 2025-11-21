@@ -1,1 +1,47 @@
-
+{
+  "meta_info": {
+    "version": "2.0",
+    "last_updated": "2025-11-21"
+  },
+  "anti_patterns": [
+    {
+      "id": "BP-01",
+      "name": "Zombie Ticket (Too Old)",
+      "category": "Backlog Hygiene",
+      "severity": "Medium",
+      "description": "This item hasn't been updated in over 90 days.",
+      "detection_logic": {
+        "field": "Updated",
+        "operator": "older_than_days",
+        "threshold": 90
+      },
+      "remedy": "Verify relevance with stakeholders. Delete or Archive if obsolete."
+    },
+    {
+      "id": "BP-02",
+      "name": "Undefined Work (No AC)",
+      "category": "Quality",
+      "severity": "High",
+      "description": "Acceptance Criteria field is empty.",
+      "detection_logic": {
+        "field": "Acceptance Criteria",
+        "operator": "is_empty",
+        "threshold": 0
+      },
+      "remedy": "Do not bring into Sprint. Run a refinement session to define 'Done'."
+    },
+    {
+      "id": "SP-01",
+      "name": "Elephant in the Room (Too Big)",
+      "category": "Sizing",
+      "severity": "High",
+      "description": "Story points exceed 13, making it risky for a single sprint.",
+      "detection_logic": {
+        "field": "Story Points",
+        "operator": "greater_than",
+        "threshold": 13
+      },
+      "remedy": "Split this item. Look for 'Conjunctions' (and/or) in the summary to find split points."
+    }
+  ]
+}
