@@ -232,7 +232,7 @@ def login_page():
     
     # 3. TITLE & CAPTION (Centered)
     st.markdown("<h1 style='text-align: center;'>Agile Anti-Pattern Scanner v3.0</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: grey;'>Powered by 'The Scrum Anti-Patterns Guide'</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: grey;'>Powered by 'Advanced Agile Guidance'</p>", unsafe_allow_html=True)
 
     st.markdown("### Login")
     
