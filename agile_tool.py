@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import io
 import re
 
-# --- EMBEDDED DEMO DATA (For users without a file) ---
+# --- EMBEDDED DEMO DATA ---
 DEMO_DATA_CSV = """Issue Key,Summary,Description,Status,Sprint,Story Points,Acceptance Criteria,Created,Updated
 PROJ-101,Fix the login button,Fix the login button,To Do,Sprint 10,3,User can click login,2025-11-01,2025-11-10
 PROJ-102,Stabilization Phase,Ensure the build is stable before release,To Do,Sprint 10 Hardening,8,No critical bugs,2025-11-01,2025-11-15
@@ -28,7 +28,7 @@ PROJ-118,Big Data Migration,Move all petabytes to S3 buckets,In Progress,Sprint 
 PROJ-119,Valid User Story,As admin I want to ban users so I can moderate,To Do,Sprint 10,3,Ban button functions,2025-11-01,2025-11-21
 PROJ-120,Another Valid Story,As user I want to reset password,To Do,Sprint 10,5,Email sent,2025-11-01,2025-11-21"""
 
-# --- CONFIGURATION (Based on 'The Scrum Anti-Patterns Guide') ---
+# --- CONFIGURATION ---
 DEFAULT_KNOWLEDGE_BASE = {
     "meta_info": {"version": "3.0", "source": "The Scrum Anti-Patterns Guide"},
     "anti_patterns": [
@@ -135,16 +135,18 @@ def check_login(username, password):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
+def render_brand_header():
+    """Renders the consistent Logo and Title for all pages."""
+    col1, col2, col3 = st.columns([1, 2, 1]) 
+    with col2:
+        st.image("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", width=200)
+    st.markdown("<h1 style='text-align: center;'>Agile Anti-Pattern Scanner v3.0</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: grey;'>Powered by 'The Scrum Anti-Patterns Guide'</p>", unsafe_allow_html=True)
+
 # --- LOGIC ENGINE ---
 
 def apply_rules(df, rules_json):
-    """
-    Applies the rules from the JSON to the Dataframe.
-    Returns a list of violation dictionaries.
-    """
     violations = []
-    
-    # Pre-processing: Ensure dates are datetime objects
     date_cols = ['Updated', 'Created', 'Resolved']
     for col in date_cols:
         if col in df.columns:
@@ -154,8 +156,6 @@ def apply_rules(df, rules_json):
         logic = rule["detection_logic"]
         field = logic["field"]
         
-        # Skip if the CSV doesn't have the required column
-        # Exception: 'days_since_last_update' requires Status + Date
         if field not in df.columns:
             if logic["operator"] != "days_since_last_update":
                 continue
@@ -164,48 +164,31 @@ def apply_rules(df, rules_json):
             
         flagged_rows = pd.DataFrame()
         
-        # 1. Logic: older_than_days (Date comparison)
+        # Logic Implementations
         if logic["operator"] == "older_than_days":
             if field in df.columns:
                 cutoff = datetime.now() - timedelta(days=logic["threshold"])
                 flagged_rows = df[df[field] < cutoff]
-        
-        # 2. Logic: is_empty (Null/Empty checks)
         elif logic["operator"] == "is_empty":
             flagged_rows = df[df[field].isnull() | (df[field] == "") | (df[field].astype(str).str.strip() == "")]
-
-        # 3. Logic: greater_than (Numeric comparison)
         elif logic["operator"] == "greater_than":
             df[field] = pd.to_numeric(df[field], errors='coerce')
             flagged_rows = df[df[field] > logic["threshold"]]
-
-        # 4. Logic: created_after_sprint_start (Scope Creep)
         elif logic["operator"] == "created_after_sprint_start":
-            # Simulating a sprint start date of 5 days ago for this demo
             sprint_start = datetime.now() - timedelta(days=5)
             flagged_rows = df[df[field] > sprint_start]
-
-        # 5. Logic: word_count_greater_than (Verbosity)
         elif logic["operator"] == "word_count_greater_than":
             flagged_rows = df[df[field].astype(str).apply(lambda x: len(x.split())) > logic["threshold"]]
-
-        # 6. Logic: word_count_less_than (Vagueness)
         elif logic["operator"] == "word_count_less_than":
             non_empty = df[df[field].notna() & (df[field].astype(str).str.strip() != "")]
             flagged_rows = non_empty[non_empty[field].astype(str).apply(lambda x: len(x.split())) < logic["threshold"]]
-
-        # 7. Logic: days_since_last_update (Stagnation)
         elif logic["operator"] == "days_since_last_update":
             if "Status" in df.columns and field in df.columns:
                 in_progress = df[df["Status"] == "In Progress"]
                 cutoff = datetime.now() - timedelta(days=logic["threshold"])
                 flagged_rows = in_progress[in_progress[field] < cutoff]
-
-        # 8. Logic: contains_text (Keyword Search)
         elif logic["operator"] == "contains_text":
             flagged_rows = df[df[field].astype(str).str.contains(str(logic["threshold"]), case=False, na=False)]
-
-        # 9. Logic: fields_are_identical (Copy & Paste PO)
         elif logic["operator"] == "fields_are_identical":
             target_field = logic["threshold"] 
             if field in df.columns and target_field in df.columns:
@@ -214,8 +197,6 @@ def apply_rules(df, rules_json):
                     (df[target_field].notna()) & 
                     (df[field].astype(str).str.strip() == df[target_field].astype(str).str.strip())
                 ]
-
-        # 10. Logic: text_contains_regex (Hardening Sprint/Sprint Zero)
         elif logic["operator"] == "text_contains_regex":
             bad_keywords = [x.lower() for x in logic["threshold"]]
             pattern = '|'.join(bad_keywords)
@@ -223,7 +204,6 @@ def apply_rules(df, rules_json):
                 df[field].astype(str).str.lower().str.contains(pattern, na=False, regex=True)
             ]
 
-        # Append Violations
         if not flagged_rows.empty:
             for idx, row in flagged_rows.iterrows():
                 violations.append({
@@ -247,14 +227,8 @@ def login_page():
     except AttributeError:
         pass
 
-    # 2. MAIN PAGE LOGO
-    col1, col2, col3 = st.columns([1, 2, 1]) 
-    with col2:
-        st.image("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", width=200)
-    
-    # 3. TITLE & CAPTION
-    st.markdown("<h1 style='text-align: center;'>Agile Anti-Pattern Scanner v3.0</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: grey;'>Powered by 'The Scrum Anti-Patterns Guide'</p>", unsafe_allow_html=True)
+    # 2. MAIN BRAND HEADER (Logo + Title)
+    render_brand_header()
 
     # --- INSTRUCTIONS SECTION ---
     with st.container():
@@ -274,7 +248,6 @@ def login_page():
             * **Developer:** `developer` / `code4life` (Read-only Rules)
             * **Product Owner:** `po` / `value99` (Read-only Rules)
             """)
-    # --------------------------------
 
     st.markdown("### Login")
     
@@ -292,7 +265,9 @@ def login_page():
                 st.error("Invalid credentials. Check the Demo Accounts box above.")
 
 def analysis_page():
-    st.header("剥 Backlog Analysis Engine")
+    # 1. MAIN BRAND HEADER (Consistent with Login Page)
+    render_brand_header()
+    st.markdown("### 剥 Backlog Analysis Engine")
     
     # Identify User Role
     current_user = st.session_state.get("username", "unknown")
@@ -326,18 +301,15 @@ def analysis_page():
         st.subheader("2. Backlog Data")
         
         # --- DEMO DATA LOGIC ---
-        # Initialize session state for demo data if not exists
         if "use_demo_data" not in st.session_state:
             st.session_state["use_demo_data"] = False
 
         uploaded_data = st.file_uploader("Upload Data (CSV)", type="csv")
         
-        # Button to toggle demo data
         if st.button("🚀 Use Demo Data (No file needed)"):
             st.session_state["use_demo_data"] = True
-            st.rerun() # Rerun to reflect the change immediately
+            st.rerun()
 
-        # Reset demo mode if a real file is uploaded
         if uploaded_data is not None:
             st.session_state["use_demo_data"] = False
 
@@ -355,7 +327,6 @@ def analysis_page():
             st.error(f"Error reading uploaded CSV: {e}")
     elif st.session_state["use_demo_data"]:
         try:
-            # Load the embedded string as a CSV
             df = pd.read_csv(io.StringIO(DEMO_DATA_CSV))
         except Exception as e:
             st.error(f"Error reading demo data: {e}")
@@ -371,7 +342,6 @@ def analysis_page():
             if results:
                 st.subheader(f"圷 Found {len(results)} Violations")
                 
-                # Convert results to DataFrame
                 result_df = pd.DataFrame(results)
                 
                 # Display Summary Metrics
@@ -380,10 +350,8 @@ def analysis_page():
                 m2.metric("Medium Severity", len(result_df[result_df['Severity'] == 'Medium']))
                 m3.metric("Categories Affected", result_df['Category'].nunique())
 
-                # Show on screen
                 st.dataframe(result_df)
                 
-                # Download Logic
                 csv_data = convert_df_to_csv(result_df)
                 st.download_button(
                     label="踏 Download Remediation Report",
