@@ -4,9 +4,9 @@ import json
 from datetime import datetime, timedelta
 import io
 
-# --- CONFIGURATION (FALLBACK) ---
+# --- CONFIGURATION (UPDATED WITH NEW LOGIC EXAMPLES) ---
 DEFAULT_KNOWLEDGE_BASE = {
-    "meta_info": {"version": "1.0", "last_updated": "2025-11-20"},
+    "meta_info": {"version": "2.0", "last_updated": "2025-11-21"},
     "anti_patterns": [
         {
             "id": "BP-01",
@@ -27,6 +27,24 @@ DEFAULT_KNOWLEDGE_BASE = {
             "remedy": "Define criteria during refinement. Use Gherkin syntax."
         },
         {
+            "id": "BP-03",
+            "name": "Vague Summary (Too Short)",
+            "category": "Quality",
+            "severity": "High",
+            "description": "One-liner stories often hide complexity.",
+            "detection_logic": {"field": "Summary", "operator": "word_count_less_than", "threshold": 4},
+            "remedy": "Rewrite summary to follow 'As a... I want... So that...' format."
+        },
+        {
+            "id": "BP-04",
+            "name": "Placeholder/Copy Item",
+            "category": "Hygiene",
+            "severity": "Low",
+            "description": "Items marked TBD or Copies clutter the board.",
+            "detection_logic": {"field": "Summary", "operator": "contains_text", "threshold": "TBD"},
+            "remedy": "Either fill in the details immediately or delete the item."
+        },
+        {
             "id": "SP-01",
             "name": "Oversized Item (INVEST)",
             "category": "Sprint Planning",
@@ -34,6 +52,15 @@ DEFAULT_KNOWLEDGE_BASE = {
             "description": "Item is too big to finish in one sprint.",
             "detection_logic": {"field": "Story Points", "operator": "greater_than", "threshold": 13},
             "remedy": "Split the story using 'Hamburger' or 'Spider' method."
+        },
+        {
+            "id": "SP-02",
+            "name": "Stagnant Work (Fake Progress)",
+            "category": "Sprint Execution",
+            "severity": "High",
+            "description": "Item marked 'In Progress' but hasn't moved in days.",
+            "detection_logic": {"field": "Updated", "operator": "days_since_last_update", "threshold": 5},
+            "remedy": "Swarm the problem or move back to backlog if blocked."
         }
     ]
 }
@@ -64,7 +91,7 @@ def check_login(username, password):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# --- LOGIC ENGINE ---
+# --- LOGIC ENGINE (UPGRADED) ---
 
 def apply_rules(df, rules_json):
     """
@@ -86,7 +113,11 @@ def apply_rules(df, rules_json):
         
         # Skip if the CSV doesn't have the required column
         if field not in df.columns:
-            continue
+            # Exception for "days_since_last_update" which relies on 'Status' + Date field
+            if logic["operator"] != "days_since_last_update":
+                continue
+            elif logic["operator"] == "days_since_last_update" and "Status" not in df.columns:
+                continue
             
         flagged_rows = pd.DataFrame()
         
@@ -114,6 +145,33 @@ def apply_rules(df, rules_json):
             sprint_start = datetime.now() - timedelta(days=5)
             flagged_rows = df[df[field] > sprint_start]
 
+        # --- NEW LOGIC INTEGRATION ---
+
+        # 5. Word Count Logic (Too Verbose)
+        elif logic["operator"] == "word_count_greater_than":
+            # Count words in the text field
+            flagged_rows = df[df[field].astype(str).apply(lambda x: len(x.split())) > logic["threshold"]]
+
+        # 6. Word Count Logic (Too Vague/Short)
+        elif logic["operator"] == "word_count_less_than":
+            # Count words, ensuring we don't count empty cells (handled by is_empty)
+            # We only check rows that actually have text
+            non_empty = df[df[field].notna() & (df[field].astype(str).str.strip() != "")]
+            flagged_rows = non_empty[non_empty[field].astype(str).apply(lambda x: len(x.split())) < logic["threshold"]]
+
+        # 7. Stagnation Logic (Stuck in Progress)
+        elif logic["operator"] == "days_since_last_update":
+            # Check if Status is 'In Progress' and Updated date is old
+            if "Status" in df.columns and field in df.columns:
+                in_progress = df[df["Status"] == "In Progress"]
+                cutoff = datetime.now() - timedelta(days=logic["threshold"])
+                flagged_rows = in_progress[in_progress[field] < cutoff]
+
+        # 8. Keyword Search (Copy/Paste or TBD)
+        elif logic["operator"] == "contains_text":
+            # Check if the text contains the threshold string (Case insensitive)
+            flagged_rows = df[df[field].astype(str).str.contains(str(logic["threshold"]), case=False, na=False)]
+
         # If violations found, append them
         if not flagged_rows.empty:
             for idx, row in flagged_rows.iterrows():
@@ -131,7 +189,7 @@ def apply_rules(df, rules_json):
 # --- PAGES ---
 
 def login_page():
-    st.title("🔐 Agile Anti-Pattern Scanner")
+    st.title("柏 Agile Anti-Pattern Scanner v2.0")
     st.markdown("### Login")
     
     with st.form("login_form"):
@@ -148,7 +206,7 @@ def login_page():
                 st.error("Invalid credentials. Try 'coach' / 'admin123'")
 
 def analysis_page():
-    st.header("🔍 Backlog Analysis Engine")
+    st.header("剥 Backlog Analysis Engine")
     st.markdown("Upload your Rules and Data files below to generate an audit report.")
 
     col1, col2 = st.columns(2)
@@ -177,11 +235,11 @@ def analysis_page():
             st.write(f"**Data Preview:** {len(df)} items loaded.")
             st.dataframe(df.head(3))
             
-            if st.button("🚀 Run Analysis"):
+            if st.button("噫 Run Analysis"):
                 results = apply_rules(df, current_rules)
                 
                 if results:
-                    st.subheader(f"🚨 Found {len(results)} Violations")
+                    st.subheader(f"圷 Found {len(results)} Violations")
                     
                     # Convert results to DataFrame
                     result_df = pd.DataFrame(results)
@@ -192,13 +250,13 @@ def analysis_page():
                     # Download Logic
                     csv_data = convert_df_to_csv(result_df)
                     st.download_button(
-                        label="📥 Download Remediation Report",
+                        label="踏 Download Remediation Report",
                         data=csv_data,
                         file_name="agile_remediation_plan.csv",
                         mime="text/csv"
                     )
                 else:
-                    st.success("🎉 Amazing! No anti-patterns detected in this dataset.")
+                    st.success("脂 Amazing! No anti-patterns detected in this dataset.")
                     
         except Exception as e:
             st.error(f"Error reading CSV: {e}")
