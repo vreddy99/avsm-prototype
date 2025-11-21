@@ -1,1 +1,6 @@
-
+Issue Key,Summary,Status,Updated,Created,Story Points,Acceptance Criteria
+PROJ-101,Database Migration,In Progress,2023-01-15,2023-01-01,21,Tables defined
+PROJ-102,Login Page CSS,Done,2025-11-20,2025-11-10,3,Pixel perfect match
+PROJ-103,Legacy Cleanup,To Do,2022-05-20,2022-01-01,5,Remove old api
+PROJ-104,User Profile Page,To Do,2025-11-18,2025-11-15,8,
+PROJ-105,Search Functionality,In Progress,2025-11-19,2025-11-15,40,Search by ID
