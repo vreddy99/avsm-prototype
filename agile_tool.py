@@ -84,10 +84,12 @@ DEFAULT_KNOWLEDGE_BASE = {
     ]
 }
 
-# Mock User Database
+# --- MOCK USER DATABASE (Updated with Roles) ---
 USERS = {
-    "coach": "admin123",
-    "sm": "scrum123"
+    "coach": "admin123",       # ADMIN: Can edit rules and run analysis
+    "sm": "scrum123",          # USER: Can run analysis only
+    "developer": "code4life",  # USER: Can run analysis only
+    "po": "value99"            # USER: Can run analysis only
 }
 
 # --- HELPER FUNCTIONS ---
@@ -110,7 +112,7 @@ def check_login(username, password):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# --- LOGIC ENGINE (FULL UPGRADE) ---
+# --- LOGIC ENGINE ---
 
 def apply_rules(df, rules_json):
     """
@@ -189,142 +191,3 @@ def apply_rules(df, rules_json):
                     (df[target_field].notna()) & 
                     (df[field].astype(str).str.strip() == df[target_field].astype(str).str.strip())
                 ]
-
-        # 10. Logic: text_contains_regex (Hardening Sprint/Sprint Zero)
-        elif logic["operator"] == "text_contains_regex":
-            bad_keywords = [x.lower() for x in logic["threshold"]]
-            pattern = '|'.join(bad_keywords)
-            flagged_rows = df[
-                df[field].astype(str).str.lower().str.contains(pattern, na=False, regex=True)
-            ]
-
-        # Append Violations
-        if not flagged_rows.empty:
-            for idx, row in flagged_rows.iterrows():
-                violations.append({
-                    "Issue Key": row.get("Issue Key", "Unknown"),
-                    "Summary": row.get("Summary", "Unknown"),
-                    "Anti-Pattern": rule["name"],
-                    "Category": rule["category"],
-                    "Severity": rule["severity"],
-                    "Violation Reason": rule["description"],
-                    "Suggested Remedy": rule["remedy"]
-                })
-                
-    return violations
-
-# --- PAGES ---
-
-def login_page():
-    # 1. SIDEBAR LOGO (New Feature - requires Streamlit 1.35+)
-    # This puts a small logo in the top-left nav bar
-    try:
-        st.logo("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", link="https://www.scrum.org")
-    except AttributeError:
-        pass # Ignores error if using an older Streamlit version
-
-    # 2. MAIN PAGE LOGO (Replaces simple text title)
-    # We use columns to center the logo image
-    col1, col2, col3 = st.columns([1, 2, 1]) 
-    with col2:
-        # This renders the image in the center column
-        st.image("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", width=200)
-    
-    # 3. TITLE & CAPTION (Centered)
-    st.markdown("<h1 style='text-align: center;'>Agile Anti-Pattern Scanner v3.0</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: grey;'>Powered by 'Advanced Agile Guidance'</p>", unsafe_allow_html=True)
-
-    st.markdown("### Login")
-    
-    with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Login")
-        
-        if submitted:
-            if check_login(username, password):
-                st.session_state["logged_in"] = True
-                st.session_state["username"] = username
-                st.rerun()
-            else:
-                st.error("Invalid credentials. Try 'coach' / 'admin123'")
-                
-def analysis_page():
-    st.header("剥 Backlog Analysis Engine")
-    st.markdown("Upload your Jira/ADO export (CSV) to detect anti-patterns defined in *The Scrum Anti-Patterns Guide*.")
-
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("1. Configuration")
-        st.info("Using Default Rules based on Wolpers' Guide (v3.0)")
-        uploaded_rules = st.file_uploader("Upload Custom Rules (Optional JSON)", type="json")
-        
-        current_rules = load_rules(uploaded_rules)
-        
-        with st.expander("View Active Rules"):
-            st.json(current_rules)
-
-    with col2:
-        st.subheader("2. Backlog Data")
-        st.info("Upload Data (CSV). Required cols: Summary, Description, Status, Created, Updated.")
-        uploaded_data = st.file_uploader("Upload Data (CSV)", type="csv")
-
-    st.divider()
-
-    if uploaded_data is not None:
-        try:
-            df = pd.read_csv(uploaded_data)
-            st.write(f"**Data Preview:** {len(df)} items loaded.")
-            st.dataframe(df.head(3))
-            
-            if st.button("噫 Run Analysis"):
-                results = apply_rules(df, current_rules)
-                
-                if results:
-                    st.subheader(f"圷 Found {len(results)} Violations")
-                    
-                    # Convert results to DataFrame
-                    result_df = pd.DataFrame(results)
-                    
-                    # Display Summary Metrics
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("High Severity", len(result_df[result_df['Severity'] == 'High']))
-                    m2.metric("Medium Severity", len(result_df[result_df['Severity'] == 'Medium']))
-                    m3.metric("Categories Affected", result_df['Category'].nunique())
-
-                    # Show on screen
-                    st.dataframe(result_df)
-                    
-                    # Download Logic
-                    csv_data = convert_df_to_csv(result_df)
-                    st.download_button(
-                        label="踏 Download Remediation Report",
-                        data=csv_data,
-                        file_name="agile_remediation_plan.csv",
-                        mime="text/csv"
-                    )
-                else:
-                    st.success("脂 Amazing! No anti-patterns detected in this dataset.")
-                    
-        except Exception as e:
-            st.error(f"Error reading CSV: {e}")
-
-# --- MAIN ---
-def main():
-    st.set_page_config(page_title="Agile Scanner", layout="wide")
-    if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
-
-    if not st.session_state["logged_in"]:
-        login_page()
-    else:
-        st.sidebar.title("Menu")
-        st.sidebar.write(f"User: {st.session_state.get('username')}")
-        if st.sidebar.button("Logout"):
-            st.session_state["logged_in"] = False
-            st.rerun()
-            
-        analysis_page()
-
-if __name__ == "__main__":
-    main()
