@@ -5,7 +5,21 @@ from datetime import datetime, timedelta
 import io
 import re
 
-# --- EMBEDDED DEMO DATA ---
+# --- 1. CENTRALIZED UI CONFIGURATION (Single Source of Truth) ---
+APP_CONSTANTS = {
+    "APP_TITLE": "Agile Anti-Pattern Scanner v3.0",
+    "APP_CAPTION": "Powered by 'The Scrum Anti-Patterns Guide'",
+    "LOGO_URL": "https://cdn-icons-png.flaticon.com/512/1087/1087815.png",
+    "LOGO_LINK": "https://www.scrum.org",
+    "BTN_RUN": "🚀 Run Analysis",
+    "BTN_DOWNLOAD": "📥 Download Remediation Report",
+    "HEADER_RESULTS": "🔍 Analysis Results",
+    "MSG_SUCCESS": "✅ Amazing! No anti-patterns detected in this dataset.",
+    "MSG_LOCKED": "🔒 Custom Rules Locked (Admin Only)",
+    "MSG_DEMO": "🚀 Use Demo Data (No file needed)"
+}
+
+# --- 2. EMBEDDED DEMO DATA ---
 DEMO_DATA_CSV = """Issue Key,Summary,Description,Status,Sprint,Story Points,Acceptance Criteria,Created,Updated
 PROJ-101,Fix the login button,Fix the login button,To Do,Sprint 10,3,User can click login,2025-11-01,2025-11-10
 PROJ-102,Stabilization Phase,Ensure the build is stable before release,To Do,Sprint 10 Hardening,8,No critical bugs,2025-11-01,2025-11-15
@@ -28,7 +42,7 @@ PROJ-118,Big Data Migration,Move all petabytes to S3 buckets,In Progress,Sprint 
 PROJ-119,Valid User Story,As admin I want to ban users so I can moderate,To Do,Sprint 10,3,Ban button functions,2025-11-01,2025-11-21
 PROJ-120,Another Valid Story,As user I want to reset password,To Do,Sprint 10,5,Email sent,2025-11-01,2025-11-21"""
 
-# --- CONFIGURATION ---
+# --- 3. RULES CONFIGURATION ---
 DEFAULT_KNOWLEDGE_BASE = {
     "meta_info": {"version": "3.0", "source": "The Scrum Anti-Patterns Guide"},
     "anti_patterns": [
@@ -107,7 +121,7 @@ DEFAULT_KNOWLEDGE_BASE = {
     ]
 }
 
-# --- MOCK USER DATABASE ---
+# --- 4. MOCK USER DATABASE ---
 USERS = {
     "coach": "admin123",       # ADMIN: Can edit rules and run analysis
     "sm": "scrum123",          # USER: Can run analysis only
@@ -115,7 +129,7 @@ USERS = {
     "po": "value99"            # USER: Can run analysis only
 }
 
-# --- HELPER FUNCTIONS ---
+# --- 5. HELPER FUNCTIONS ---
 
 def load_rules(uploaded_rules_file):
     """Loads rules from uploaded file or falls back to default."""
@@ -136,16 +150,26 @@ def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
 def render_brand_header():
-    """Renders the consistent Logo and Title for all pages."""
+    """Renders the consistent Logo and Title for all pages using APP_CONSTANTS."""
+    # Sidebar Logo
+    try:
+        st.logo(APP_CONSTANTS["LOGO_URL"], link=APP_CONSTANTS["LOGO_LINK"])
+    except AttributeError:
+        pass
+
+    # Main Page Logo
     col1, col2, col3 = st.columns([1, 2, 1]) 
     with col2:
-        st.image("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", width=200)
-    st.markdown("<h1 style='text-align: center;'>Agile Anti-Pattern Scanner v3.0</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: grey;'>Powered by 'The Scrum Anti-Patterns Guide'</p>", unsafe_allow_html=True)
+        st.image(APP_CONSTANTS["LOGO_URL"], width=200)
+    
+    # Titles
+    st.markdown(f"<h1 style='text-align: center;'>{APP_CONSTANTS['APP_TITLE']}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center; color: grey;'>{APP_CONSTANTS['APP_CAPTION']}</p>", unsafe_allow_html=True)
 
-# --- LOGIC ENGINE ---
+# --- 6. LOGIC ENGINE ---
 
 def apply_rules(df, rules_json):
+    """Applies rules to DataFrame and returns violations."""
     violations = []
     date_cols = ['Updated', 'Created', 'Resolved']
     for col in date_cols:
@@ -157,6 +181,7 @@ def apply_rules(df, rules_json):
         field = logic["field"]
         
         if field not in df.columns:
+            # Exception for days_since_last_update which needs Status too
             if logic["operator"] != "days_since_last_update":
                 continue
             elif logic["operator"] == "days_since_last_update" and "Status" not in df.columns:
@@ -164,7 +189,7 @@ def apply_rules(df, rules_json):
             
         flagged_rows = pd.DataFrame()
         
-        # Logic Implementations
+        # Logic Blocks
         if logic["operator"] == "older_than_days":
             if field in df.columns:
                 cutoff = datetime.now() - timedelta(days=logic["threshold"])
@@ -218,19 +243,12 @@ def apply_rules(df, rules_json):
                 
     return violations
 
-# --- PAGES ---
+# --- 7. PAGE FUNCTIONS ---
 
 def login_page():
-    # 1. SIDEBAR LOGO
-    try:
-        st.logo("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", link="https://www.scrum.org")
-    except AttributeError:
-        pass
-
-    # 2. MAIN BRAND HEADER (Logo + Title)
     render_brand_header()
 
-    # --- INSTRUCTIONS SECTION ---
+    # Instructions
     with st.container():
         st.markdown("---")
         st.markdown("### 👋 Welcome!")
@@ -262,18 +280,16 @@ def login_page():
                 st.session_state["username"] = username
                 st.rerun()
             else:
-                st.error("Invalid credentials. Check the Demo Accounts box above.")
+                st.error("Invalid credentials.")
 
 def analysis_page():
-    # 1. MAIN BRAND HEADER (Consistent with Login Page)
     render_brand_header()
-    st.markdown("### 剥 Backlog Analysis Engine")
     
     # Identify User Role
     current_user = st.session_state.get("username", "unknown")
     is_admin = current_user == "coach"
     
-    # Display Welcome Message based on Role
+    # Display Welcome Message
     if is_admin:
         st.success(f"Welcome, Coach! You have **Admin** access to configure rules.")
     else:
@@ -291,7 +307,7 @@ def analysis_page():
             uploaded_rules = st.file_uploader("Upload Custom Rules (JSON)", type="json")
             current_rules = load_rules(uploaded_rules)
         else:
-            st.warning("🔒 Custom Rules Locked (Admin Only)")
+            st.warning(APP_CONSTANTS["MSG_LOCKED"])
             current_rules = DEFAULT_KNOWLEDGE_BASE
         
         with st.expander("View Active Rules"):
@@ -300,13 +316,13 @@ def analysis_page():
     with col2:
         st.subheader("2. Backlog Data")
         
-        # --- DEMO DATA LOGIC ---
+        # Demo Data Logic
         if "use_demo_data" not in st.session_state:
             st.session_state["use_demo_data"] = False
 
         uploaded_data = st.file_uploader("Upload Data (CSV)", type="csv")
         
-        if st.button("🚀 Use Demo Data (No file needed)"):
+        if st.button(APP_CONSTANTS["MSG_DEMO"]):
             st.session_state["use_demo_data"] = True
             st.rerun()
 
@@ -318,7 +334,7 @@ def analysis_page():
 
     st.divider()
 
-    # --- LOAD DATAFRAME ---
+    # Load Data
     df = None
     if uploaded_data is not None:
         try:
@@ -331,20 +347,21 @@ def analysis_page():
         except Exception as e:
             st.error(f"Error reading demo data: {e}")
 
-    # --- DISPLAY & ANALYZE ---
+    # Analysis & Results
     if df is not None:
         st.write(f"**Data Preview:** {len(df)} items loaded.")
         st.dataframe(df.head(3))
         
-        if st.button("噫 Run Analysis"):
+        if st.button(APP_CONSTANTS["BTN_RUN"]):
             results = apply_rules(df, current_rules)
             
             if results:
-                st.subheader(f"圷 Found {len(results)} Violations")
+                st.subheader(APP_CONSTANTS["HEADER_RESULTS"])
+                st.write(f"**Found {len(results)} Violations**")
                 
                 result_df = pd.DataFrame(results)
                 
-                # Display Summary Metrics
+                # Metrics
                 m1, m2, m3 = st.columns(3)
                 m1.metric("High Severity", len(result_df[result_df['Severity'] == 'High']))
                 m2.metric("Medium Severity", len(result_df[result_df['Severity'] == 'Medium']))
@@ -354,15 +371,15 @@ def analysis_page():
                 
                 csv_data = convert_df_to_csv(result_df)
                 st.download_button(
-                    label="踏 Download Remediation Report",
+                    label=APP_CONSTANTS["BTN_DOWNLOAD"],
                     data=csv_data,
                     file_name="agile_remediation_plan.csv",
                     mime="text/csv"
                 )
             else:
-                st.success("脂 Amazing! No anti-patterns detected in this dataset.")
+                st.success(APP_CONSTANTS["MSG_SUCCESS"])
 
-# --- MAIN ---
+# --- 8. MAIN ---
 def main():
     st.set_page_config(page_title="Agile Scanner", layout="wide")
     if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
