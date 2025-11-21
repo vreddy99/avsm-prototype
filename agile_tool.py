@@ -191,3 +191,176 @@ def apply_rules(df, rules_json):
                     (df[target_field].notna()) & 
                     (df[field].astype(str).str.strip() == df[target_field].astype(str).str.strip())
                 ]
+
+        # 10. Logic: text_contains_regex (Hardening Sprint/Sprint Zero)
+        elif logic["operator"] == "text_contains_regex":
+            bad_keywords = [x.lower() for x in logic["threshold"]]
+            pattern = '|'.join(bad_keywords)
+            flagged_rows = df[
+                df[field].astype(str).str.lower().str.contains(pattern, na=False, regex=True)
+            ]
+
+        # Append Violations
+        if not flagged_rows.empty:
+            for idx, row in flagged_rows.iterrows():
+                violations.append({
+                    "Issue Key": row.get("Issue Key", "Unknown"),
+                    "Summary": row.get("Summary", "Unknown"),
+                    "Anti-Pattern": rule["name"],
+                    "Category": rule["category"],
+                    "Severity": rule["severity"],
+                    "Violation Reason": rule["description"],
+                    "Suggested Remedy": rule["remedy"]
+                })
+                
+    return violations
+
+# --- PAGES ---
+
+def login_page():
+    # 1. SIDEBAR LOGO (New Feature - requires Streamlit 1.35+)
+    try:
+        st.logo("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", link="https://www.scrum.org")
+    except AttributeError:
+        pass # Ignores error if using an older Streamlit version
+
+    # 2. MAIN PAGE LOGO (Replaces simple text title)
+    col1, col2, col3 = st.columns([1, 2, 1]) 
+    with col2:
+        st.image("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", width=200)
+    
+    # 3. TITLE & CAPTION
+    st.markdown("<h1 style='text-align: center;'>Agile Anti-Pattern Scanner v3.0</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: grey;'>Powered by 'The Scrum Anti-Patterns Guide'</p>", unsafe_allow_html=True)
+
+    # --- NEW INSTRUCTIONS SECTION ---
+    with st.container():
+        st.markdown("---")
+        st.markdown("### 👋 Welcome!")
+        st.info("""
+        **How to use this tool:**
+        1. **Login** with your team credentials (see below).
+        2. **Upload** your backlog CSV file.
+        3. **Review** the automated report for process smells like 'Hardening Sprints' or 'Zombie Tickets'.
+        """)
+        
+        with st.expander("ℹ️ Available Demo Accounts"):
+            st.markdown("""
+            * **Admin/Coach:** `coach` / `admin123` (Can edit Rules)
+            * **Scrum Master:** `sm` / `scrum123` (Read-only Rules)
+            * **Developer:** `developer` / `code4life` (Read-only Rules)
+            * **Product Owner:** `po` / `value99` (Read-only Rules)
+            """)
+    # --------------------------------
+
+    st.markdown("### Login")
+    
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login")
+        
+        if submitted:
+            if check_login(username, password):
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+                st.rerun()
+            else:
+                st.error("Invalid credentials. Check the Demo Accounts box above.")
+
+def analysis_page():
+    st.header("剥 Backlog Analysis Engine")
+    
+    # Identify User Role
+    current_user = st.session_state.get("username", "unknown")
+    is_admin = current_user == "coach"
+    
+    # Display Welcome Message based on Role
+    if is_admin:
+        st.success(f"Welcome, Coach! You have **Admin** access to configure rules.")
+    else:
+        st.info(f"Welcome, {current_user}. You are in **Viewer** mode (Default Rules Only).")
+
+    st.markdown("Upload your Jira/ADO export (CSV) to detect anti-patterns defined in *The Scrum Anti-Patterns Guide*.")
+
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("1. Configuration")
+        
+        # --- NEW LOGIC: Only Admin can upload rules ---
+        if is_admin:
+            st.info("Upload Custom Rules (Admin Only)")
+            uploaded_rules = st.file_uploader("Upload Custom Rules (JSON)", type="json")
+            current_rules = load_rules(uploaded_rules)
+        else:
+            st.warning("🔒 Custom Rules Locked (Admin Only)")
+            current_rules = DEFAULT_KNOWLEDGE_BASE
+        # ----------------------------------------------
+        
+        with st.expander("View Active Rules"):
+            st.json(current_rules)
+
+    with col2:
+        st.subheader("2. Backlog Data")
+        st.info("Upload Data (CSV). Required cols: Summary, Description, Status, Created, Updated.")
+        uploaded_data = st.file_uploader("Upload Data (CSV)", type="csv")
+
+    st.divider()
+
+    if uploaded_data is not None:
+        try:
+            df = pd.read_csv(uploaded_data)
+            st.write(f"**Data Preview:** {len(df)} items loaded.")
+            st.dataframe(df.head(3))
+            
+            if st.button("噫 Run Analysis"):
+                results = apply_rules(df, current_rules)
+                
+                if results:
+                    st.subheader(f"圷 Found {len(results)} Violations")
+                    
+                    # Convert results to DataFrame
+                    result_df = pd.DataFrame(results)
+                    
+                    # Display Summary Metrics
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("High Severity", len(result_df[result_df['Severity'] == 'High']))
+                    m2.metric("Medium Severity", len(result_df[result_df['Severity'] == 'Medium']))
+                    m3.metric("Categories Affected", result_df['Category'].nunique())
+
+                    # Show on screen
+                    st.dataframe(result_df)
+                    
+                    # Download Logic
+                    csv_data = convert_df_to_csv(result_df)
+                    st.download_button(
+                        label="踏 Download Remediation Report",
+                        data=csv_data,
+                        file_name="agile_remediation_plan.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.success("脂 Amazing! No anti-patterns detected in this dataset.")
+                    
+        except Exception as e:
+            st.error(f"Error reading CSV: {e}")
+
+# --- MAIN ---
+def main():
+    st.set_page_config(page_title="Agile Scanner", layout="wide")
+    if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
+
+    if not st.session_state["logged_in"]:
+        login_page()
+    else:
+        st.sidebar.title("Menu")
+        st.sidebar.write(f"User: {st.session_state.get('username')}")
+        if st.sidebar.button("Logout"):
+            st.session_state["logged_in"] = False
+            st.rerun()
+            
+        analysis_page()
+
+if __name__ == "__main__":
+    main()
