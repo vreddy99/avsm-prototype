@@ -286,16 +286,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-### How to turn this code into a Live Public URL (in 5 minutes)
-
-You can do this right now. You do not need to pay anything.
-
-1.  **Create a GitHub Repository:**
-    * Go to GitHub.com and create a new public repository (e.g., `avsm-prototype`).
-    * Create a file named `app.py` and paste the code above into it.
-    * Create a file named `requirements.txt` and paste this inside:
-        ```
-        streamlit
-        pandas
