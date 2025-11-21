@@ -216,8 +216,24 @@ def apply_rules(df, rules_json):
 # --- PAGES ---
 
 def login_page():
-    st.title("柏 Agile Anti-Pattern Scanner v3.0")
-    st.caption("Powered by 'The Scrum Anti-Patterns Guide'")
+    # 1. SIDEBAR LOGO (New Feature - requires Streamlit 1.35+)
+    # This puts a small logo in the top-left nav bar
+    try:
+        st.logo("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", link="https://www.scrum.org")
+    except AttributeError:
+        pass # Ignores error if using an older Streamlit version
+
+    # 2. MAIN PAGE LOGO (Replaces simple text title)
+    # We use columns to center the logo image
+    col1, col2, col3 = st.columns([1, 2, 1]) 
+    with col2:
+        # This renders the image in the center column
+        st.image("https://cdn-icons-png.flaticon.com/512/1087/1087815.png", width=200)
+    
+    # 3. TITLE & CAPTION (Centered)
+    st.markdown("<h1 style='text-align: center;'>Agile Anti-Pattern Scanner v3.0</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: grey;'>Powered by 'The Scrum Anti-Patterns Guide'</p>", unsafe_allow_html=True)
+
     st.markdown("### Login")
     
     with st.form("login_form"):
@@ -232,7 +248,7 @@ def login_page():
                 st.rerun()
             else:
                 st.error("Invalid credentials. Try 'coach' / 'admin123'")
-
+                
 def analysis_page():
     st.header("剥 Backlog Analysis Engine")
     st.markdown("Upload your Jira/ADO export (CSV) to detect anti-patterns defined in *The Scrum Anti-Patterns Guide*.")
