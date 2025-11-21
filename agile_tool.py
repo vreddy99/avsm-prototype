@@ -3,17 +3,36 @@ import pandas as pd
 import json
 from datetime import datetime, timedelta
 import io
+import re
 
-# --- CONFIGURATION (UPDATED WITH NEW LOGIC EXAMPLES) ---
+# --- CONFIGURATION (Based on 'The Scrum Anti-Patterns Guide') ---
 DEFAULT_KNOWLEDGE_BASE = {
-    "meta_info": {"version": "2.0", "last_updated": "2025-11-21"},
+    "meta_info": {"version": "3.0", "source": "The Scrum Anti-Patterns Guide"},
     "anti_patterns": [
+        {
+            "id": "PO-01",
+            "name": "Copy & Paste Product Owner",
+            "category": "Product Owner",
+            "severity": "Medium",
+            "description": "PO creates items by simply copying the title into the description, adding no value (Source: Ch 2).",
+            "detection_logic": {"field": "Summary", "operator": "fields_are_identical", "threshold": "Description"},
+            "remedy": "Refine items collaboratively to ensure shared understanding and avoid 'ticket monkey' behavior."
+        },
+        {
+            "id": "SP-03",
+            "name": "The 'Hardening' Sprint",
+            "category": "Sprint Planning",
+            "severity": "High",
+            "description": "There is no such thing as a hardening Sprint in Scrum. Quality should be built in (Source: Ch 5).",
+            "detection_logic": {"field": "Sprint", "operator": "text_contains_regex", "threshold": ["Hardening", "Stabilization", "Cleanup", "Sprint 0"]},
+            "remedy": "Ensure the Definition of Done is met every Sprint. Do not defer quality work."
+        },
         {
             "id": "BP-01",
             "name": "Outdated Items (Zombie Tickets)",
             "category": "Product Backlog",
             "severity": "Medium",
-            "description": "Items that haven't been touched for months create noise.",
+            "description": "Items that haven't been touched for months create noise (Source: Ch 10).",
             "detection_logic": {"field": "Updated", "operator": "older_than_days", "threshold": 90},
             "remedy": "Review in 'Anti-Product Backlog' and delete if no longer valuable."
         },
@@ -22,9 +41,27 @@ DEFAULT_KNOWLEDGE_BASE = {
             "name": "Missing Acceptance Criteria",
             "category": "Product Backlog",
             "severity": "High",
-            "description": "Stories without clear finish lines lead to scope creep.",
+            "description": "Stories without clear finish lines lead to scope creep (Source: Ch 10).",
             "detection_logic": {"field": "Acceptance Criteria", "operator": "is_empty", "threshold": 0},
             "remedy": "Define criteria during refinement. Use Gherkin syntax."
+        },
+        {
+            "id": "SP-01",
+            "name": "Oversized Item (INVEST)",
+            "category": "Sprint Planning",
+            "severity": "Medium",
+            "description": "Item is too big to finish in one sprint (Source: Ch 11).",
+            "detection_logic": {"field": "Story Points", "operator": "greater_than", "threshold": 13},
+            "remedy": "Split the story using 'Hamburger' or 'Spider' method."
+        },
+        {
+            "id": "ST-01",
+            "name": "Scope Creep (Flow Disruption)",
+            "category": "Stakeholders",
+            "severity": "High",
+            "description": "Work added after the sprint started disrupts flow (Source: Ch 1).",
+            "detection_logic": {"field": "Created", "operator": "created_after_sprint_start", "threshold": 0},
+            "remedy": "Stakeholders must respect the Sprint Goal. Urgent work replaces existing work, not adds to it."
         },
         {
             "id": "BP-03",
@@ -34,24 +71,6 @@ DEFAULT_KNOWLEDGE_BASE = {
             "description": "One-liner stories often hide complexity.",
             "detection_logic": {"field": "Summary", "operator": "word_count_less_than", "threshold": 4},
             "remedy": "Rewrite summary to follow 'As a... I want... So that...' format."
-        },
-        {
-            "id": "BP-04",
-            "name": "Placeholder/Copy Item",
-            "category": "Hygiene",
-            "severity": "Low",
-            "description": "Items marked TBD or Copies clutter the board.",
-            "detection_logic": {"field": "Summary", "operator": "contains_text", "threshold": "TBD"},
-            "remedy": "Either fill in the details immediately or delete the item."
-        },
-        {
-            "id": "SP-01",
-            "name": "Oversized Item (INVEST)",
-            "category": "Sprint Planning",
-            "severity": "Medium",
-            "description": "Item is too big to finish in one sprint.",
-            "detection_logic": {"field": "Story Points", "operator": "greater_than", "threshold": 13},
-            "remedy": "Split the story using 'Hamburger' or 'Spider' method."
         },
         {
             "id": "SP-02",
@@ -91,7 +110,7 @@ def check_login(username, password):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# --- LOGIC ENGINE (UPGRADED) ---
+# --- LOGIC ENGINE (FULL UPGRADE) ---
 
 def apply_rules(df, rules_json):
     """
@@ -101,7 +120,6 @@ def apply_rules(df, rules_json):
     violations = []
     
     # Pre-processing: Ensure dates are datetime objects
-    # We try to convert common date columns if they exist
     date_cols = ['Updated', 'Created', 'Resolved']
     for col in date_cols:
         if col in df.columns:
@@ -112,8 +130,8 @@ def apply_rules(df, rules_json):
         field = logic["field"]
         
         # Skip if the CSV doesn't have the required column
+        # Exception: 'days_since_last_update' requires Status + Date
         if field not in df.columns:
-            # Exception for "days_since_last_update" which relies on 'Status' + Date field
             if logic["operator"] != "days_since_last_update":
                 continue
             elif logic["operator"] == "days_since_last_update" and "Status" not in df.columns:
@@ -125,63 +143,72 @@ def apply_rules(df, rules_json):
         if logic["operator"] == "older_than_days":
             if field in df.columns:
                 cutoff = datetime.now() - timedelta(days=logic["threshold"])
-                # Filter rows where date is older than cutoff
                 flagged_rows = df[df[field] < cutoff]
         
         # 2. Logic: is_empty (Null/Empty checks)
         elif logic["operator"] == "is_empty":
-            # Check for NaN or empty strings
             flagged_rows = df[df[field].isnull() | (df[field] == "") | (df[field].astype(str).str.strip() == "")]
 
         # 3. Logic: greater_than (Numeric comparison)
         elif logic["operator"] == "greater_than":
-            # Force numeric conversion, coerce errors to NaN
             df[field] = pd.to_numeric(df[field], errors='coerce')
             flagged_rows = df[df[field] > logic["threshold"]]
 
-        # 4. Logic: created_after_sprint_start (Specific date logic)
+        # 4. Logic: created_after_sprint_start (Scope Creep)
         elif logic["operator"] == "created_after_sprint_start":
             # Simulating a sprint start date of 5 days ago for this demo
             sprint_start = datetime.now() - timedelta(days=5)
             flagged_rows = df[df[field] > sprint_start]
 
-        # --- NEW LOGIC INTEGRATION ---
-
-        # 5. Word Count Logic (Too Verbose)
+        # 5. Logic: word_count_greater_than (Verbosity)
         elif logic["operator"] == "word_count_greater_than":
-            # Count words in the text field
             flagged_rows = df[df[field].astype(str).apply(lambda x: len(x.split())) > logic["threshold"]]
 
-        # 6. Word Count Logic (Too Vague/Short)
+        # 6. Logic: word_count_less_than (Vagueness)
         elif logic["operator"] == "word_count_less_than":
-            # Count words, ensuring we don't count empty cells (handled by is_empty)
-            # We only check rows that actually have text
             non_empty = df[df[field].notna() & (df[field].astype(str).str.strip() != "")]
             flagged_rows = non_empty[non_empty[field].astype(str).apply(lambda x: len(x.split())) < logic["threshold"]]
 
-        # 7. Stagnation Logic (Stuck in Progress)
+        # 7. Logic: days_since_last_update (Stagnation)
         elif logic["operator"] == "days_since_last_update":
-            # Check if Status is 'In Progress' and Updated date is old
             if "Status" in df.columns and field in df.columns:
                 in_progress = df[df["Status"] == "In Progress"]
                 cutoff = datetime.now() - timedelta(days=logic["threshold"])
                 flagged_rows = in_progress[in_progress[field] < cutoff]
 
-        # 8. Keyword Search (Copy/Paste or TBD)
+        # 8. Logic: contains_text (Keyword Search)
         elif logic["operator"] == "contains_text":
-            # Check if the text contains the threshold string (Case insensitive)
             flagged_rows = df[df[field].astype(str).str.contains(str(logic["threshold"]), case=False, na=False)]
 
-        # If violations found, append them
+        # 9. Logic: fields_are_identical (Copy & Paste PO)
+        elif logic["operator"] == "fields_are_identical":
+            target_field = logic["threshold"] 
+            if field in df.columns and target_field in df.columns:
+                flagged_rows = df[
+                    (df[field].notna()) & 
+                    (df[target_field].notna()) & 
+                    (df[field].astype(str).str.strip() == df[target_field].astype(str).str.strip())
+                ]
+
+        # 10. Logic: text_contains_regex (Hardening Sprint/Sprint Zero)
+        elif logic["operator"] == "text_contains_regex":
+            bad_keywords = [x.lower() for x in logic["threshold"]]
+            pattern = '|'.join(bad_keywords)
+            flagged_rows = df[
+                df[field].astype(str).str.lower().str.contains(pattern, na=False, regex=True)
+            ]
+
+        # Append Violations
         if not flagged_rows.empty:
             for idx, row in flagged_rows.iterrows():
                 violations.append({
                     "Issue Key": row.get("Issue Key", "Unknown"),
                     "Summary": row.get("Summary", "Unknown"),
-                    "Anti-Pattern Detected": rule["name"],
+                    "Anti-Pattern": rule["name"],
+                    "Category": rule["category"],
                     "Severity": rule["severity"],
-                    "Reason": rule["description"],
-                    "Remedy Recommendation": rule["remedy"]
+                    "Violation Reason": rule["description"],
+                    "Suggested Remedy": rule["remedy"]
                 })
                 
     return violations
@@ -189,7 +216,8 @@ def apply_rules(df, rules_json):
 # --- PAGES ---
 
 def login_page():
-    st.title("柏 Agile Anti-Pattern Scanner v2.0")
+    st.title("柏 Agile Anti-Pattern Scanner v3.0")
+    st.caption("Powered by 'The Scrum Anti-Patterns Guide'")
     st.markdown("### Login")
     
     with st.form("login_form"):
@@ -207,16 +235,15 @@ def login_page():
 
 def analysis_page():
     st.header("剥 Backlog Analysis Engine")
-    st.markdown("Upload your Rules and Data files below to generate an audit report.")
+    st.markdown("Upload your Jira/ADO export (CSV) to detect anti-patterns defined in *The Scrum Anti-Patterns Guide*.")
 
     col1, col2 = st.columns(2)
     
     with col1:
         st.subheader("1. Configuration")
-        st.info("Upload a JSON file with anti-pattern rules.")
-        uploaded_rules = st.file_uploader("Upload Rules (JSON)", type="json")
+        st.info("Using Default Rules based on Wolpers' Guide (v3.0)")
+        uploaded_rules = st.file_uploader("Upload Custom Rules (Optional JSON)", type="json")
         
-        # Load rules (either uploaded or default)
         current_rules = load_rules(uploaded_rules)
         
         with st.expander("View Active Rules"):
@@ -224,7 +251,7 @@ def analysis_page():
 
     with col2:
         st.subheader("2. Backlog Data")
-        st.info("Upload your Jira/ADO export (CSV).")
+        st.info("Upload Data (CSV). Required cols: Summary, Description, Status, Created, Updated.")
         uploaded_data = st.file_uploader("Upload Data (CSV)", type="csv")
 
     st.divider()
@@ -244,6 +271,12 @@ def analysis_page():
                     # Convert results to DataFrame
                     result_df = pd.DataFrame(results)
                     
+                    # Display Summary Metrics
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("High Severity", len(result_df[result_df['Severity'] == 'High']))
+                    m2.metric("Medium Severity", len(result_df[result_df['Severity'] == 'Medium']))
+                    m3.metric("Categories Affected", result_df['Category'].nunique())
+
                     # Show on screen
                     st.dataframe(result_df)
                     
