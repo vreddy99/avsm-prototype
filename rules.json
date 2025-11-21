@@ -1,47 +1,98 @@
 {
   "meta_info": {
-    "version": "2.0",
-    "last_updated": "2025-11-21"
+    "version": "3.0",
+    "source": "Stefan Wolpers - Scrum Anti-Patterns Guide"
   },
   "anti_patterns": [
     {
       "id": "BP-01",
-      "name": "Zombie Ticket (Too Old)",
+      "name": "The Zombie Backlog",
       "category": "Backlog Hygiene",
       "severity": "Medium",
-      "description": "This item hasn't been updated in over 90 days.",
-      "detection_logic": {
-        "field": "Updated",
-        "operator": "older_than_days",
-        "threshold": 90
-      },
-      "remedy": "Verify relevance with stakeholders. Delete or Archive if obsolete."
+      "description": "Items older than 180 days cluttering the backlog.",
+      "detection_logic": { "field": "Created", "operator": "older_than_days", "threshold": 180 },
+      "remedy": "Delete or Archive."
     },
     {
       "id": "BP-02",
-      "name": "Undefined Work (No AC)",
+      "name": "No Acceptance Criteria",
       "category": "Quality",
       "severity": "High",
-      "description": "Acceptance Criteria field is empty.",
-      "detection_logic": {
-        "field": "Acceptance Criteria",
-        "operator": "is_empty",
-        "threshold": 0
-      },
-      "remedy": "Do not bring into Sprint. Run a refinement session to define 'Done'."
+      "description": "Story submitted without defining 'Done'.",
+      "detection_logic": { "field": "Acceptance Criteria", "operator": "is_empty", "threshold": 0 },
+      "remedy": "Define 'Done' before Sprint Planning."
     },
     {
       "id": "SP-01",
-      "name": "Elephant in the Room (Too Big)",
+      "name": "The Monolith",
       "category": "Sizing",
       "severity": "High",
-      "description": "Story points exceed 13, making it risky for a single sprint.",
-      "detection_logic": {
-        "field": "Story Points",
-        "operator": "greater_than",
-        "threshold": 13
-      },
-      "remedy": "Split this item. Look for 'Conjunctions' (and/or) in the summary to find split points."
+      "description": "Story Points > 13. Too risky.",
+      "detection_logic": { "field": "Story Points", "operator": "greater_than", "threshold": 13 },
+      "remedy": "Split using the Spider Method."
+    },
+    {
+      "id": "SE-01",
+      "name": "Sprint Stuffing",
+      "category": "Execution",
+      "severity": "High",
+      "description": "Created after sprint start.",
+      "detection_logic": { "field": "Created", "operator": "created_after_sprint_start", "threshold": 0 },
+      "remedy": "Move to next sprint."
+    },
+    {
+      "id": "SP-02",
+      "name": "Undefined Value (Ghost)",
+      "category": "Sizing",
+      "severity": "Medium",
+      "description": "Missing story points.",
+      "detection_logic": { "field": "Story Points", "operator": "is_empty", "threshold": 0 },
+      "remedy": "Estimate with the team."
+    },
+    {
+      "id": "BP-03",
+      "name": "The Spec Factory",
+      "category": "Refinement",
+      "severity": "Low",
+      "description": "Description > 500 words. Analysis Paralysis.",
+      "detection_logic": { "field": "Summary", "operator": "word_count_greater_than", "threshold": 500 },
+      "remedy": "Focus on conversation, not documentation."
+    },
+    {
+      "id": "BP-04",
+      "name": "Vague One-Liner",
+      "category": "Refinement",
+      "severity": "Medium",
+      "description": "Summary is less than 3 words.",
+      "detection_logic": { "field": "Summary", "operator": "word_count_less_than", "threshold": 3 },
+      "remedy": "Use the format: As a... I want... So that..."
+    },
+    {
+      "id": "SE-02",
+      "name": "Flow Stagnation",
+      "category": "Flow",
+      "severity": "High",
+      "description": "Item hasn't moved in 10 days.",
+      "detection_logic": { "field": "Updated", "operator": "days_since_last_update", "threshold": 10 },
+      "remedy": "Swarm this item to unblock it."
+    },
+    {
+      "id": "BP-05",
+      "name": "Copy-Paste Junk",
+      "category": "Hygiene",
+      "severity": "Low",
+      "description": "Contains 'Copy of'.",
+      "detection_logic": { "field": "Summary", "operator": "contains_text", "threshold": "Copy of" },
+      "remedy": "Rename and ensure unique value."
+    },
+    {
+      "id": "BP-06",
+      "name": "The TBD Placeholder",
+      "category": "Quality",
+      "severity": "Medium",
+      "description": "Acceptance Criteria contains 'TBD'.",
+      "detection_logic": { "field": "Acceptance Criteria", "operator": "contains_text", "threshold": "TBD" },
+      "remedy": "Define it now or delete it."
     }
   ]
 }
